@@ -1,0 +1,7 @@
+{
+  "utterance": "Turn all lights off",
+  "intent_type": "TurnOffAllLightsIntent",
+  "intent": {
+    "TurnOnLightsKeyword": "turn all lights off"
+  }
+}
