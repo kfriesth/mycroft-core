@@ -1,7 +1,9 @@
 {
-  "utterance": "Turn all lights on",
-  "intent_type": "TurnOnAllLightsIntent",
+  "utterance": "Turn the led0 on",
+  "intent_type": "Esp8266CmdIntent",
   "intent": {
-    "TurnOnLightsKeyword": "turn all lights on"
+    "CommandKeyword": "turn",
+    "ModuleKeyword": "led0",
+    "ActionKeyword": "on"
   }
 }

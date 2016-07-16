@@ -34,26 +34,29 @@ class Esp8266Skill(MycroftSkill):
     
     def initialize(self):
         self.load_data_files(dirname(__file__))
-        self.__build_turn_on_lights()
-        self.__build_turn_off_lights()
+        self. __build_single_command()
         
-    def __build_turn_on_lights(self):
-        intent = IntentBuilder("TurnOnAllLightsIntent").require("TurnOnLightsKeyword").build()
-        self.register_intent(intent, self.handle_turn_on_lights)
         
-    def __build_turn_off_lights(self):
-        intent = IntentBuilder("TurnOffAllLightsIntent").require("TurnOffLightsKeyword").build()
-        self.register_intent(intent, self.handle_turn_off_lights)
+    def __build_single_command(self):
+        intent = IntentBuilder("Esp8266CmdIntent").require("CommandKeyword").require("ModuleKeyword").optionally("ActionKeyword").build()
+        self.register_intent(intent, self.handle_single_command)
         
-    def handle_turn_on_lights(self, message):
-        urlopen("http://esp8266.local/led0?state=on")
-        urlopen("http://esp8266.local/led1?state=on")
-        self.speak_dialog("lights.on")
+    def handle_single_command(self, message):
+        cmd_name = message.metadata.get("CommandKeyword")
+        mdl_name = message.metadata.get("ModuleKeyword")
+        act_name = message.metadata.get("ActionKeyword")
+        esp_mdl_name = mdl_name.replace(' ', '_')
         
-    def handle_turn_off_lights(self, message):
-        urlopen("http://esp8266.local/led0?state=off")
-        urlopen("http://esp8266.local/led1?state=off")
-        self.speak_dialog("lights.off")
+        to_esp = esp_mdl_name + "?cmd=" + cmd_name
+        if act_name:
+            to_esp += '_' + act_name
+        try:
+            # exemple : http://esp8266.local/led0?cmd=turn_on
+            urlopen("http://esp8266.local/" + to_esp) 
+            self.speak_dialog("cmd.sent")
+        except Exception as e:
+            self.speak_dialog("not.found", {"command": cmd_name, "action": act_name, "module": mdl_name})
+            LOGGER.error("Error: {0}".format(e))
         
     def stop(self):
         pass
