@@ -22,6 +22,7 @@ from mycroft.skills.core import MycroftSkill
 from mycroft.util.log import getLogger
 
 from urllib2 import urlopen
+from websocket import create_connection
 
 __author__ = 'Dark5ide'
 
@@ -31,6 +32,9 @@ class Esp8266Skill(MycroftSkill):
 
     def __init__(self):
         super(Esp8266Skill, self).__init__(name="Esp8266Skill")
+        self.esp_units = self.config["units"].replace(" ", "").split(',')
+        self.protocol = self.config["protocol"]
+        self.ws = [create_connection("ws://" + u + ":81/") for u in self.esp_units]
     
     def initialize(self):
         self.load_data_files(dirname(__file__))
@@ -47,12 +51,19 @@ class Esp8266Skill(MycroftSkill):
         act_name = message.metadata.get("ActionKeyword")
         esp_mdl_name = mdl_name.replace(' ', '_')
         
-        to_esp = esp_mdl_name + "?cmd=" + cmd_name
         if act_name:
-            to_esp += '_' + act_name
+            cmd_name += '_' + act_name
+
         try:
-            # exemple : http://esp8266.local/led0?cmd=turn_on
-            urlopen("http://esp8266.local/" + to_esp) 
+            if (self.protocol == "ws"):
+                for ws_connect in self.ws:
+                    ws_connect.send(esp_mdl_name + "-" + cmd_name)
+            else:
+                to_esp = esp_mdl_name + "?cmd=" + cmd_name
+                # exemple : http://esp8266.local/led0?cmd=turn_on
+                for u in self.esp_units:
+                    urlopen("http://" + u + "/" + to_esp)
+                #urlopen("http://esp8266.local/" + to_esp)
             self.speak_dialog("cmd.sent")
         except Exception as e:
             self.speak_dialog("not.found", {"command": cmd_name, "action": act_name, "module": mdl_name})
