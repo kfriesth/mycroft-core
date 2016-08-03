@@ -32,9 +32,11 @@ class Esp8266Skill(MycroftSkill):
 
     def __init__(self):
         super(Esp8266Skill, self).__init__(name="Esp8266Skill")
-        self.esp_units = self.config["units"].replace(" ", "").split(',')
+        self.esp_units = self.config["units"]
+        if type(self.esp_units) == str:
+            self.esp_units = [self.esp_units]
         self.protocol = self.config["protocol"]
-        self.ws = [create_connection("ws://" + u + ":81/") for u in self.esp_units]
+        self.ws = None
     
     def initialize(self):
         self.load_data_files(dirname(__file__))
@@ -56,8 +58,11 @@ class Esp8266Skill(MycroftSkill):
 
         try:
             if (self.protocol == "ws"):
+                if self.ws is None:
+                    self.ws = [create_connection("ws://" + u + ":81/") for u in self.esp_units]
                 for ws_connect in self.ws:
                     ws_connect.send(esp_mdl_name + "-" + cmd_name)
+                    LOGGER.info(esp_mdl_name + "-" + cmd_name)
             else:
                 to_esp = esp_mdl_name + "?cmd=" + cmd_name
                 # exemple : http://esp8266.local/led0?cmd=turn_on
@@ -66,6 +71,7 @@ class Esp8266Skill(MycroftSkill):
                 #urlopen("http://esp8266.local/" + to_esp)
             self.speak_dialog("cmd.sent")
         except Exception as e:
+            self.ws = None
             self.speak_dialog("not.found", {"command": cmd_name, "action": act_name, "module": mdl_name})
             LOGGER.error("Error: {0}".format(e))
         
