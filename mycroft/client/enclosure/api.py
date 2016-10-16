@@ -70,6 +70,17 @@ class EnclosureAPI:
         self.client.emit(
             Message("enclosure.eyes.level", metadata={'level': level}))
 
+    def eyes_reset(self):
+        self.client.emit(Message("enclosure.eyes.reset"))
+
+    def eyes_timed_spin(self, length):
+        self.client.emit(
+            Message("enclosure.eyes.timedspin", metadata={'length': length}))
+
+    def eyes_volume(self, volume):
+        self.client.emit(
+            Message("enclosure.eyes.volume", metadata={'volume': volume}))
+
     def mouth_reset(self):
         self.client.emit(Message("enclosure.mouth.reset"))
 
@@ -85,9 +96,15 @@ class EnclosureAPI:
     def mouth_smile(self):
         self.client.emit(Message("enclosure.mouth.smile"))
 
+    def mouth_viseme(self, visCode):
+        self.client.emit(
+            Message("enclosure.mouth.viseme", metadata={
+                   'code': visCode}))
+
     def mouth_text(self, text=""):
         self.client.emit(
-            Message("enclosure.mouth.text", metadata={'text': text}))
+            Message("enclosure.mouth.text", metadata={
+                   'text': text}))
 
     def weather_display(self, img_code, temp):
         self.client.emit(

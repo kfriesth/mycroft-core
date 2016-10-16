@@ -14,17 +14,17 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
+
 import subprocess
 import sys
+import threading
+import time
 from Queue import Queue
 from alsaaudio import Mixer
 from threading import Thread
 
 import os
 import serial
-import time
-
-import threading
 
 from mycroft.client.enclosure.arduino import EnclosureArduino
 from mycroft.client.enclosure.eyes import EnclosureEyes
@@ -33,10 +33,11 @@ from mycroft.client.enclosure.weather import EnclosureWeather
 from mycroft.configuration import ConfigurationManager
 from mycroft.messagebus.client.ws import WebsocketClient
 from mycroft.messagebus.message import Message
-from mycroft.util import kill, str2bool
 from mycroft.util import play_wav
-from mycroft.util.log import getLogger
+from mycroft.util import create_signal
+from mycroft.util import str2bool
 from mycroft.util.audio_test import record
+from mycroft.util.log import getLogger
 
 __author__ = 'aatchison + jdorleans + iward'
 
@@ -80,6 +81,7 @@ class EnclosureReader(Thread):
         self.client.emit(Message(data))
 
         if "mycroft.stop" in data:
+            create_signal('buttonPress')
             self.client.emit(Message("mycroft.stop"))
 
         if "volume.up" in data:
@@ -111,6 +113,31 @@ class EnclosureReader(Thread):
 
             # Test audio muting on arduino
             subprocess.call('speaker-test -P 10 -l 0 -s 1', shell=True)
+
+        if "unit.shutdown" in data:
+            self.client.emit(
+                Message("enclosure.eyes.timedspin",
+                        metadata={'length': 12000}))
+            self.client.emit(Message("enclosure.mouth.reset"))
+            subprocess.call('systemctl poweroff -i', shell=True)
+
+        if "unit.reboot" in data:
+            self.client.emit(
+                Message("enclosure.eyes.spin"))
+            self.client.emit(Message("enclosure.mouth.reset"))
+            subprocess.call('systemctl reboot -i', shell=True)
+
+        if "unit.setwifi" in data:
+            self.client.emit(Message("mycroft.wifi.start"))
+
+        if "unit.factory-reset" in data:
+            subprocess.call(
+                'rm ~/.mycroft/identity/identity.json',
+                shell=True)
+            self.client.emit(
+                Message("enclosure.eyes.spin"))
+            self.client.emit(Message("enclosure.mouth.reset"))
+            subprocess.call('systemctl reboot -i', shell=True)
 
     def stop(self):
         self.alive = False
@@ -195,11 +222,15 @@ class Enclosure:
             self.client.emit(Message("speak", metadata={
                 'utterance': "I will be finished in just a moment."}))
             self.upload_hex()
+            self.client.emit(Message("speak", metadata={
+                'utterance': "Arduino programing complete."}))
 
         must_start_test = self.config.get('must_start_test')
         if must_start_test is not None and str2bool(must_start_test):
             ConfigurationManager.set('enclosure', 'must_start_test', False)
             time.sleep(0.5)  # Ensure arduino has booted
+            self.client.emit(Message("speak", metadata={
+                'utterance': "Begining hardware self test."}))
             self.writer.write("test.begin")
 
     @staticmethod

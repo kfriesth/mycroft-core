@@ -17,10 +17,13 @@
 
 
 import os
+import os.path
 import subprocess
 from os.path import dirname
+import socket
 
 import psutil
+import tempfile
 
 __author__ = 'jdorleans'
 
@@ -86,6 +89,42 @@ def kill(names):
                     break
             except:
                 pass
+
+
+def connected(host="8.8.8.8", port=53, timeout=3):
+    """
+    Thanks to 7h3rAm on
+    Host: 8.8.8.8 (google-public-dns-a.google.com)
+    OpenPort: 53/tcp
+    Service: domain (DNS/TCP)
+    """
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except IOError:
+        try:
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
+                ("8.8.4.4", port))
+            return True
+        except IOError:
+            return False
+
+
+def create_signal(signalName):
+    try:
+        f = open(tempfile.gettempdir()+'/'+signalName, 'w')
+        return True
+    except IOError:
+        return False
+
+
+def check_for_signal(signalName):
+    if os.path.isfile(tempfile.gettempdir()+'/'+signalName):
+        os.remove(tempfile.gettempdir()+'/'+signalName)
+        return True
+
+    return False
 
 
 class CerberusAccessDenied(Exception):
