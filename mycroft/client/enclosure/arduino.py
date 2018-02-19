@@ -1,26 +1,16 @@
-# Copyright 2016 Mycroft AI, Inc.
+# Copyright 2017 Mycroft AI Inc.
 #
-# This file is part of Mycroft Core.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Mycroft Core is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
-# Mycroft Core is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
-
-
-from mycroft.util.log import getLogger
-
-__author__ = 'jdorleans'
-
-LOGGER = getLogger(__name__)
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 
 class EnclosureArduino:
@@ -30,15 +20,19 @@ class EnclosureArduino:
     Performs the associated command on Arduino by writing on the Serial port.
     """
 
-    def __init__(self, client, writer):
-        self.client = client
+    def __init__(self, ws, writer):
+        self.ws = ws
         self.writer = writer
         self.__init_events()
 
     def __init_events(self):
-        self.client.on('enclosure.system.mute', self.mute)
-        self.client.on('enclosure.system.unmute', self.unmute)
-        self.client.on('enclosure.system.blink', self.blink)
+        self.ws.on('enclosure.system.reset', self.reset)
+        self.ws.on('enclosure.system.mute', self.mute)
+        self.ws.on('enclosure.system.unmute', self.unmute)
+        self.ws.on('enclosure.system.blink', self.blink)
+
+    def reset(self, event=None):
+        self.writer.write("system.reset")
 
     def mute(self, event=None):
         self.writer.write("system.mute")
@@ -48,6 +42,6 @@ class EnclosureArduino:
 
     def blink(self, event=None):
         times = 1
-        if event and event.metadata:
-            times = event.metadata.get("times", times)
+        if event and event.data:
+            times = event.data.get("times", times)
         self.writer.write("system.blink=" + str(times))

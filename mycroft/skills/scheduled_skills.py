@@ -1,40 +1,35 @@
-# Copyright 2016 Mycroft AI, Inc.
+# Copyright 2017 Mycroft AI Inc.
 #
-# This file is part of Mycroft Core.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Mycroft Core is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
-# Mycroft Core is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
-# You should have received a copy of the GNU General Public License
-# along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
-
-
-import abc
 from datetime import datetime
 from threading import Timer, Lock
 from time import mktime
 
+import abc
 import parsedatetime as pdt
-
 from adapt.intent import IntentBuilder
+
 from mycroft.skills import time_rules
 from mycroft.skills.core import MycroftSkill
-from mycroft.util.log import getLogger
-
-__author__ = 'jdorleans'
-
-logger = getLogger(__name__)
+from mycroft.util.log import LOG
 
 
 class ScheduledSkill(MycroftSkill):
     """
+    DEPRECATED!  Instead, use the MycroftSkill methods schedule_event(),
+    schedule_repeating_event(), update_event(), and cancel_event().
+
     Abstract class which provides a repeatable notification behaviour at a
     specified time.
 
@@ -52,6 +47,18 @@ class ScheduledSkill(MycroftSkill):
         self.timer = None
         self.calendar = pdt.Calendar()
         self.time_rules = time_rules.create(self.lang)
+        self.init_format()
+
+    def init_format(self):
+        if self.config_core.get('date_format') == 'DMY':
+            self.format = "%d %B, %Y at "
+        else:
+            self.format = "%B %d, %Y at "
+
+        if self.config_core.get('time_format') == 'full':
+            self.format += "%H:%M"
+        else:
+            self.format += "%I:%M, %p"
 
     def schedule(self):
         times = sorted(self.get_times())
@@ -62,6 +69,7 @@ class ScheduledSkill(MycroftSkill):
             now = self.get_utc_time()
             delay = max(float(t) - now, 1)
             self.timer = Timer(delay, self.notify, [t])
+            self.timer.daemon = True
             self.start()
 
     def start(self):
@@ -91,8 +99,7 @@ class ScheduledSkill(MycroftSkill):
             else:
                 return "%s minutes and %s seconds from now" % \
                        (int(minutes), int(seconds))
-        return date.strftime(
-            self.config_core.get('time.format'))
+        return date.strftime(self.format)
 
     @abc.abstractmethod
     def get_times(self):
@@ -102,9 +109,20 @@ class ScheduledSkill(MycroftSkill):
     def notify(self, timestamp):
         pass
 
+    def shutdown(self):
+        super(ScheduledSkill, self).shutdown()
+        # if timer method is running wait for it to complete
+        self.cancel()
+        if self.timer and self.timer.isAlive():
+            self.timer.join()
+        self.timer = None
+
 
 class ScheduledCRUDSkill(ScheduledSkill):
     """
+    DEPRECATED!  Instead, use the MycroftSkill methods schedule_event(),
+    schedule_repeating_event(), update_event(), and cancel_event().
+
     Abstract CRUD class which provides a repeatable notification behaviour at
     a specified time.
 
@@ -112,8 +130,8 @@ class ScheduledCRUDSkill(ScheduledSkill):
     provided ``data``
 
     Skills implementation inherits this class when it needs to schedule a task
-    or a notification with a provided data
-    that can be manipulated by CRUD commands.
+    or a notification with a provided data that can be manipulated by CRUD
+    commands.
 
     E.g. CRUD operations for a Reminder Skill
         #. "Mycroft, list two reminders"
@@ -131,12 +149,14 @@ class ScheduledCRUDSkill(ScheduledSkill):
         super(ScheduledCRUDSkill, self).__init__(name, emitter)
         self.data = {}
         self.repeat_data = {}
-        self.basedir = basedir
+        if basedir:
+            LOG.debug('basedir argument is no longer required and is ' +
+                      'depreciated.')
+            self.basedir = basedir
 
     def initialize(self):
         self.load_data()
         self.load_repeat_data()
-        self.load_data_files(self.basedir)
         self.register_regex("(?P<" + self.name + "Amount>\d+)")
         self.register_intent(
             self.build_intent_create().build(), self.handle_create)
@@ -172,7 +192,7 @@ class ScheduledCRUDSkill(ScheduledSkill):
         return self.data.keys()
 
     def handle_create(self, message):
-        utterance = message.metadata.get('utterance')
+        utterance = message.data.get('utterance')
         date = self.get_utc_time(utterance)
         delay = date - self.get_utc_time()
 
@@ -192,7 +212,7 @@ class ScheduledCRUDSkill(ScheduledSkill):
             self.add(utc_time, message)
 
     def add(self, utc_time, message):
-        utterance = message.metadata.get('utterance')
+        utterance = message.data.get('utterance')
         self.data[utc_time] = None
         self.repeat_data[utc_time] = self.time_rules.get_week_days(utterance)
 
@@ -278,7 +298,7 @@ class ScheduledCRUDSkill(ScheduledSkill):
     # TODO - Localization
     def get_amount(self, message, default=None):
         size = len(self.data)
-        amount = message.metadata.get(self.name + 'Amount', default)
+        amount = message.data.get(self.name + 'Amount', default)
         if amount in ['all', 'my', 'all my', None]:
             total = size
         elif amount in ['one', 'the next', 'the following']:

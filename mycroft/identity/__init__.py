@@ -1,62 +1,64 @@
-# Copyright 2016 Mycroft AI, Inc.
+# Copyright 2017 Mycroft AI Inc.
 #
-# This file is part of Mycroft Core.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Mycroft Core is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
-# Mycroft Core is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
-# You should have received a copy of the GNU General Public License
-# along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
-
-
-from uuid import uuid4
 import json
+import time
+
 from mycroft.filesystem import FileSystemAccess
 
 
 class DeviceIdentity(object):
     def __init__(self, **kwargs):
-        self.device_id = kwargs.get('device_id')
-        self.owner = kwargs.get('owner')
-        self.token = kwargs.get('token')
+        self.uuid = kwargs.get("uuid", "")
+        self.access = kwargs.get("access", "")
+        self.refresh = kwargs.get("refresh", "")
+        self.expires_at = kwargs.get("expires_at", 0)
 
-    @staticmethod
-    def load(identity_file_handle):
-        json_blob = json.load(identity_file_handle)
-        return DeviceIdentity(**json_blob)
-
-    def save(self, identity_file_handle):
-        json.dump(self.__dict__, identity_file_handle)
+    def is_expired(self):
+        return self.refresh and self.expires_at <= time.time()
 
 
 class IdentityManager(object):
-    def __init__(self):
-        self.filesystem = FileSystemAccess('identity')
-        self.identity = None
-        self.initialize()
+    __identity = None
 
-    def initialize(self):
-        if self.filesystem.exists('identity.json'):
-            self.identity = DeviceIdentity.load(self.filesystem.open(
-                'identity.json', 'r'))
-        else:
-            identity = DeviceIdentity(device_id=str(uuid4()))
-            self.update(identity)
+    @staticmethod
+    def load():
+        try:
+            with FileSystemAccess('identity').open('identity2.json', 'r') as f:
+                IdentityManager.__identity = DeviceIdentity(**json.load(f))
+        except:
+            IdentityManager.__identity = DeviceIdentity()
+        return IdentityManager.__identity
 
-    def update(self, identity):
-        self.identity = identity
-        with self.filesystem.open('identity.json', 'w') as f:
-            self.identity.save(f)
+    @staticmethod
+    def save(login=None):
+        if login:
+            IdentityManager.update(login)
+        with FileSystemAccess('identity').open('identity2.json', 'w') as f:
+            json.dump(IdentityManager.__identity.__dict__, f)
 
-    def is_paired(self):
-        return self.identity is not None and self.identity.owner is not None
+    @staticmethod
+    def update(login=None):
+        login = login or {}
+        expiration = login.get("expiration", 0)
+        IdentityManager.__identity.uuid = login.get("uuid", "")
+        IdentityManager.__identity.access = login.get("accessToken", "")
+        IdentityManager.__identity.refresh = login.get("refreshToken", "")
+        IdentityManager.__identity.expires_at = time.time() + expiration
 
-    def get(self):
-        return self.identity
+    @staticmethod
+    def get():
+        if not IdentityManager.__identity:
+            IdentityManager.load()
+        return IdentityManager.__identity

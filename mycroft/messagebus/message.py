@@ -1,61 +1,125 @@
-# Copyright 2016 Mycroft AI, Inc.
+# Copyright 2017 Mycroft AI Inc.
 #
-# This file is part of Mycroft Core.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Mycroft Core is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
-# Mycroft Core is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
-# You should have received a copy of the GNU General Public License
-# along with Mycroft Core.  If not, see <http://www.gnu.org/licenses/>.
-
-
 import json
-
-__author__ = 'seanfitz'
+from mycroft.util.parse import normalize
 
 
 class Message(object):
-    def __init__(self, message_type, metadata={}, context=None):
-        self.message_type = message_type
-        self.metadata = metadata
+    """Holds and manipulates data sent over the websocket
+
+        Message objects will be used to send information back and forth
+        between processes of Mycroft.
+
+    Attributes:
+        type (str): type of data sent within the message.
+        data (dict): data sent within the message
+        context: info about the message not part of data such as source,
+            destination or domain.
+    """
+
+    def __init__(self, type, data=None, context=None):
+        """Used to construct a message object
+
+        Message objects will be used to send information back and fourth
+        bettween processes of mycroft service, voice, skill and cli
+        """
+        data = data or {}
+        self.type = type
+        self.data = data
         self.context = context
 
     def serialize(self):
+        """This returns a string of the message info.
+
+        This makes it easy to send over a websocket. This uses
+        json dumps to generate the string with type, data and context
+
+        Returns:
+            str: a json string representation of the message.
+        """
         return json.dumps({
-            'message_type': self.message_type,
-            'metadata': self.metadata,
+            'type': self.type,
+            'data': self.data,
             'context': self.context
         })
 
     @staticmethod
-    def deserialize(json_str):
-        json_message = json.loads(json_str)
-        return Message(json_message.get('message_type'),
-                       metadata=json_message.get('metadata'),
-                       context=json_message.get('context'))
+    def deserialize(value):
+        """This takes a string and constructs a message object.
 
-    def reply(self, message_type, metadata, context={}):
-        if not context:
-            context = {}
+        This makes it easy to take strings from the websocket and create
+        a message object.  This uses json loads to get the info and generate
+        the message object.
+
+        Args:
+            value(str): This is the json string received from the websocket
+
+        Returns:
+            Message: message object constructed from the json string passed
+            int the function.
+            value(str): This is the string received from the websocket
+        """
+        obj = json.loads(value)
+        return Message(obj.get('type'), obj.get('data'), obj.get('context'))
+
+    def reply(self, type, data, context=None):
+        """Construct a reply message for a given message
+
+        This will take the same parameters as a message object but use
+        the current message object as a reference.  It will copy the context
+        from the existing message object and add any context passed in to
+        the function.  Check for a target passed in to the function from
+        the data object and add that to the context as a target.  If the
+        context has a client name then that will become the target in the
+        context.  The new message will then have data passed in plus the
+        new context generated.
+
+        Args:
+            type (str): type of message
+            data (dict): data for message
+            context: intented context for new message
+
+        Returns:
+            Message: Message object to be used on the reply to the message
+        """
+        context = context or {}
+
         new_context = self.context if self.context else {}
         for key in context:
             new_context[key] = context[key]
-        if 'target' in metadata:
-            new_context['target'] = metadata['target']
+        if 'target' in data:
+            new_context['target'] = data['target']
         elif 'client_name' in context:
             context['target'] = context['client_name']
-        return Message(message_type, metadata, context=new_context)
+        return Message(type, data, context=new_context)
 
-    def publish(self, message_type, metadata, context={}):
-        if not context:
-            context = {}
+    def publish(self, type, data, context=None):
+        """
+        Copy the original context and add passed in context.  Delete
+        any target in the new context. Return a new message object with
+        passed in data and new context.  Type remains unchanged.
+
+        Args:
+            type (str): type of message
+            data (dict): date to send with message
+            context: context added to existing context
+
+        Returns:
+            Message: Message object to publish
+        """
+        context = context or {}
         new_context = self.context.copy() if self.context else {}
         for key in context:
             new_context[key] = context[key]
@@ -63,4 +127,21 @@ class Message(object):
         if 'target' in new_context:
             del new_context['target']
 
-        return Message(message_type, metadata, context=new_context)
+        return Message(type, data, context=new_context)
+
+    def utterance_remainder(self):
+        """
+        For intents get the portion not consumed by Adapt.
+
+        For example: if they say 'Turn on the family room light' and there are
+        entity matches for "turn on" and "light", then it will leave behind
+        " the family room " which is then normalized to "family room".
+
+        Returns:
+            str: Leftover words or None if not an utterance.
+        """
+        utt = self.data.get("utterance", None)
+        if utt and "__tags__" in self.data:
+            for token in self.data["__tags__"]:
+                utt = utt.replace(token["key"], "")
+        return normalize(utt)
